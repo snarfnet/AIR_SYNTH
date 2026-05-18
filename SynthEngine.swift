@@ -6,6 +6,15 @@ final class SynthEngine: ObservableObject {
     enum KickType {
         case kick808
         case kick909
+
+        var label: String {
+            switch self {
+            case .kick808:
+                return "808"
+            case .kick909:
+                return "909"
+            }
+        }
     }
 
     enum Waveform: String, CaseIterable {

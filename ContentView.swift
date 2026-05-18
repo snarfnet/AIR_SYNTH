@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var midi = MidiOut()
     @StateObject private var sequencer = StepSequencer()
     @StateObject private var voiceSynth = VoiceSynth()
+    @StateObject private var kickClock = KickClock()
 
     @State private var touchPoint = CGPoint(x: 0.42, y: 0.36)
     @State private var pulse = false
@@ -55,6 +56,11 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            kickClock.trigger = { type in
+                synth.triggerKick(type)
+            }
+        }
     }
 
     private var header: some View {
@@ -245,6 +251,7 @@ struct ContentView: View {
 
                 HStack(spacing: 8) {
                     Button {
+                        kickClock.selectedKick = .kick808
                         synth.triggerKick(.kick808)
                     } label: {
                         Label("808", systemImage: "circle.fill")
@@ -252,11 +259,40 @@ struct ContentView: View {
                     .buttonStyle(InstrumentButtonStyle(color: .orange))
 
                     Button {
+                        kickClock.selectedKick = .kick909
                         synth.triggerKick(.kick909)
                     } label: {
                         Label("909", systemImage: "circle.circle.fill")
                     }
                     .buttonStyle(InstrumentButtonStyle(color: .cyan))
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        kickClock.toggle()
+                    } label: {
+                        Label(kickClock.isRunning ? "STOP 4/4" : "FOUR ON", systemImage: kickClock.isRunning ? "stop.fill" : "repeat")
+                    }
+                    .buttonStyle(InstrumentButtonStyle(color: kickClock.isRunning ? .orange : .mint))
+
+                    Stepper("\(Int(kickClock.bpm)) BPM", value: $kickClock.bpm, in: 72...180, step: 1)
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(.white)
+                        .labelsHidden()
+                        .frame(maxWidth: 118)
+                }
+
+                HStack(spacing: 8) {
+                    Text("\(Int(kickClock.bpm)) BPM")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(.orange)
+                        .frame(width: 62, alignment: .leading)
+                    Slider(value: $kickClock.bpm, in: 72...180, step: 1)
+                        .tint(.orange)
+                    Text(kickClock.selectedKick.label)
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(.cyan)
+                        .frame(width: 34, alignment: .trailing)
                 }
 
                 HStack(spacing: 8) {

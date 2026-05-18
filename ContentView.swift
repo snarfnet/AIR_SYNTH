@@ -28,6 +28,7 @@ struct ContentView: View {
                 header
                 waveformScope
                 performanceField
+                patchPanel
                 controlRack
                 sequencerPanel
             }
@@ -170,6 +171,42 @@ struct ContentView: View {
                     MacroSlider(title: "DRIVE", value: $synth.drive, color: .orange)
                     MacroSlider(title: "DELAY", value: $synth.delayMix, color: .cyan)
                     MacroSlider(title: "LFO", value: $synth.lfoRate, color: .mint)
+                }
+            }
+        }
+    }
+
+    private var patchPanel: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("AMBIENT PATCH")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.72))
+                    Spacer()
+                    Text(synth.patch.rawValue)
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(.orange)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(SynthEngine.AmbientPatch.allCases, id: \.self) { patch in
+                            Button {
+                                synth.applyPatch(patch)
+                            } label: {
+                                Text(patch.rawValue)
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .padding(.horizontal, 13)
+                                    .padding(.vertical, 9)
+                                    .background(
+                                        Capsule()
+                                            .fill(synth.patch == patch ? Color.orange : Color.white.opacity(0.08))
+                                    )
+                                    .foregroundColor(synth.patch == patch ? .black : .white.opacity(0.84))
+                            }
+                        }
+                    }
                 }
             }
         }

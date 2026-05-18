@@ -10,6 +10,17 @@ final class SynthEngine: ObservableObject {
         case noise = "NOISE"
     }
 
+    enum AmbientPatch: String, CaseIterable {
+        case airPad = "AIR PAD"
+        case glassDrone = "GLASS"
+        case tapeCloud = "TAPE"
+        case shimmer = "SHIMMER"
+        case subMist = "MIST"
+        case crystalBell = "CRYSTAL"
+        case velvetChoir = "VELVET"
+        case dawnKeys = "DAWN"
+    }
+
     @Published var isPlaying = false
     @Published var pitch: Double = 0.42
     @Published var filter: Double = 0.66
@@ -18,16 +29,84 @@ final class SynthEngine: ObservableObject {
     @Published var delayMix: Double = 0.28
     @Published var lfoRate: Double = 0.22
     @Published var waveform: Waveform = .saw
+    @Published var patch: AmbientPatch = .airPad
     @Published var scaleName = "MINOR"
 
     private let engine = AVAudioEngine()
     private var sourceNode: AVAudioSourceNode?
     private var phase: Double = 0
+    private var phase2: Double = 0.12
+    private var phase3: Double = 0.36
+    private var phase4: Double = 0.72
     private var lfoPhase: Double = 0
+    private var slowPhase: Double = 0
     private var filteredSample: Double = 0
-    private var delayBuffer = [Float](repeating: 0, count: 44_100)
+    private var hazeSample: Double = 0
+    private var delayBuffer = [Float](repeating: 0, count: 132_300)
     private var delayIndex = 0
     private let scale = [0, 2, 3, 5, 7, 10, 12, 14, 15, 17, 19, 22, 24]
+
+    func applyPatch(_ newPatch: AmbientPatch) {
+        patch = newPatch
+        switch newPatch {
+        case .airPad:
+            waveform = .saw
+            filter = 0.72
+            drive = 0.12
+            delayMix = 0.56
+            lfoRate = 0.11
+            volume = 0.52
+        case .glassDrone:
+            waveform = .sine
+            filter = 0.88
+            drive = 0.06
+            delayMix = 0.62
+            lfoRate = 0.06
+            volume = 0.5
+        case .tapeCloud:
+            waveform = .saw
+            filter = 0.56
+            drive = 0.24
+            delayMix = 0.78
+            lfoRate = 0.1
+            volume = 0.46
+        case .shimmer:
+            waveform = .sine
+            filter = 0.94
+            drive = 0.08
+            delayMix = 0.72
+            lfoRate = 0.24
+            volume = 0.44
+        case .subMist:
+            waveform = .square
+            filter = 0.38
+            drive = 0.18
+            delayMix = 0.44
+            lfoRate = 0.08
+            volume = 0.58
+        case .crystalBell:
+            waveform = .sine
+            filter = 0.98
+            drive = 0.04
+            delayMix = 0.68
+            lfoRate = 0.18
+            volume = 0.42
+        case .velvetChoir:
+            waveform = .noise
+            filter = 0.64
+            drive = 0.08
+            delayMix = 0.82
+            lfoRate = 0.12
+            volume = 0.38
+        case .dawnKeys:
+            waveform = .sine
+            filter = 0.82
+            drive = 0.1
+            delayMix = 0.48
+            lfoRate = 0.16
+            volume = 0.5
+        }
+    }
 
     func start() {
         guard !isPlaying else { return }
@@ -86,36 +165,82 @@ final class SynthEngine: ObservableObject {
     private func renderSample(sampleRate: Double) -> Float {
         let baseFrequency = frequency()
         let lfo = sin(lfoPhase * .pi * 2)
-        let modulatedFrequency = baseFrequency * (1.0 + lfo * lfoRate * 0.04)
+        let slow = sin(slowPhase * .pi * 2)
+        let modulatedFrequency = baseFrequency * (1.0 + lfo * lfoRate * 0.04 + slow * 0.006)
 
         phase += modulatedFrequency / sampleRate
+        phase2 += (modulatedFrequency * 1.003) / sampleRate
+        phase3 += (modulatedFrequency * 1.497) / sampleRate
+        phase4 += (modulatedFrequency * 0.502) / sampleRate
         lfoPhase += (0.2 + lfoRate * 8.0) / sampleRate
+        slowPhase += (0.025 + lfoRate * 0.12) / sampleRate
         phase.formTruncatingRemainder(dividingBy: 1)
+        phase2.formTruncatingRemainder(dividingBy: 1)
+        phase3.formTruncatingRemainder(dividingBy: 1)
+        phase4.formTruncatingRemainder(dividingBy: 1)
         lfoPhase.formTruncatingRemainder(dividingBy: 1)
+        slowPhase.formTruncatingRemainder(dividingBy: 1)
 
-        let raw: Double
-        switch waveform {
-        case .saw:
-            raw = (phase * 2.0) - 1.0
-        case .square:
-            raw = phase < 0.5 ? 1.0 : -1.0
-        case .sine:
-            raw = sin(phase * .pi * 2)
-        case .noise:
-            raw = Double.random(in: -1...1)
-        }
-
-        let cutoff = 0.015 + filter * filter * 0.45
+        let raw = renderPatchSample(lfo: lfo, slow: slow)
+        let cutoff = 0.006 + filter * filter * 0.34
         filteredSample += (raw - filteredSample) * cutoff
-        let driven = tanh(filteredSample * (1.0 + drive * 8.0))
+        hazeSample += (filteredSample - hazeSample) * (0.0015 + delayMix * 0.006)
 
-        let delayFrames = max(1, Int(sampleRate * (0.08 + delayMix * 0.42)))
+        let airy = filteredSample * 0.78 + hazeSample * 0.42
+        let driven = tanh(airy * (1.0 + drive * 8.0))
+
+        let delaySeconds = 0.18 + delayMix * 1.62
+        let delayFrames = min(delayBuffer.count - 1, max(1, Int(sampleRate * delaySeconds)))
         let readIndex = (delayIndex - delayFrames + delayBuffer.count) % delayBuffer.count
         let delayed = delayBuffer[readIndex]
         let output = Float(driven) * Float(volume) + delayed * Float(delayMix)
-        delayBuffer[delayIndex] = output * 0.55
+        delayBuffer[delayIndex] = output * Float(0.48 + delayMix * 0.34)
         delayIndex = (delayIndex + 1) % delayBuffer.count
 
         return max(-1, min(1, output))
+    }
+
+    private func renderPatchSample(lfo: Double, slow: Double) -> Double {
+        switch waveform {
+        case .saw:
+            let saw1 = (phase * 2.0) - 1.0
+            let saw2 = (phase2 * 2.0) - 1.0
+            let sine = sin(phase3 * .pi * 2)
+            let softPad = saw1 * 0.28 + saw2 * 0.22 + sine * 0.5
+            return beautifulColor(softPad)
+        case .square:
+            let sub = phase4 < 0.5 ? 1.0 : -1.0
+            let soft = sin(phase * .pi * 2) * 0.45
+            return beautifulColor(sub * 0.36 + soft)
+        case .sine:
+            let root = sin(phase * .pi * 2)
+            let fifth = sin(phase3 * .pi * 2) * 0.28
+            let octave = sin(phase2 * .pi * 4) * 0.18
+            let bell = sin(phase3 * .pi * 6) * 0.08 * (0.5 + filter * 0.5)
+            return beautifulColor(root * 0.62 + fifth + octave + bell)
+        case .noise:
+            let noise = Double.random(in: -1...1)
+            let choirTone = sin(phase * .pi * 2) * 0.34 + sin(phase3 * .pi * 2) * 0.2
+            return beautifulColor(noise * (0.12 + slow * 0.05) + choirTone + lfo * 0.035)
+        }
+    }
+
+    private func beautifulColor(_ input: Double) -> Double {
+        switch patch {
+        case .crystalBell:
+            let chime = sin(phase3 * .pi * 8.0) * 0.16 + sin(phase2 * .pi * 12.0) * 0.08
+            return input * 0.72 + chime
+        case .velvetChoir:
+            let choir = sin(phase * .pi * 2.0) * 0.34 + sin(phase2 * .pi * 2.0) * 0.32 + sin(phase3 * .pi * 2.0) * 0.18
+            return choir + input * 0.18
+        case .dawnKeys:
+            let keyTone = sin(phase * .pi * 2.0) * 0.52 + sin(phase3 * .pi * 4.0) * 0.16
+            return keyTone + input * 0.34
+        case .shimmer:
+            let shimmerTone = sin(phase2 * .pi * 6.0) * 0.1 + sin(phase3 * .pi * 8.0) * 0.07
+            return input * 0.82 + shimmerTone
+        default:
+            return input
+        }
     }
 }

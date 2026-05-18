@@ -311,8 +311,10 @@ private struct WaveformView: View {
 
         for x in stride(from: 0.0, through: size.width, by: 3.0) {
             let p = x / max(size.width, 1)
-            let primary = sin((p * 6.0 + time * 1.7 + pitch * 2.0) * .pi * 2.0) * amp
-            let secondary = sin((p * 17.0 + time * 0.72) * .pi * 2.0) * amp * 0.28
+            let primaryPhase = (p * 6.0 + time * 1.7 + pitch * 2.0) * Double.pi * 2.0
+            let secondaryPhase = (p * 17.0 + time * 0.72) * Double.pi * 2.0
+            let primary = sin(primaryPhase) * amp
+            let secondary = sin(secondaryPhase) * amp * 0.28
             let y = mid + primary + secondary
 
             if x == 0 {

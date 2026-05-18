@@ -276,6 +276,26 @@ struct ContentView: View {
                     .opacity(voiceSynth.hasRecording ? 1 : 0.58)
                 }
 
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(VoiceSynth.VoiceStyle.allCases, id: \.self) { style in
+                            Button {
+                                voiceSynth.applyStyle(style)
+                            } label: {
+                                Text(style.rawValue)
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .padding(.horizontal, 13)
+                                    .padding(.vertical, 9)
+                                    .background(
+                                        Capsule()
+                                            .fill(voiceSynth.style == style ? Color.mint : Color.white.opacity(0.08))
+                                    )
+                                    .foregroundColor(voiceSynth.style == style ? .black : .white.opacity(0.84))
+                            }
+                        }
+                    }
+                }
+
                 HStack(spacing: 12) {
                     MacroSlider(title: "VOICE PITCH", value: voicePitchBinding, color: .mint)
                     MacroSlider(title: "VOICE RATE", value: voiceRateBinding, color: .cyan)

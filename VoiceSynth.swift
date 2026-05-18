@@ -3,16 +3,25 @@ import Combine
 import Foundation
 
 final class VoiceSynth: NSObject, ObservableObject, AVAudioRecorderDelegate {
+    enum VoiceStyle: String, CaseIterable {
+        case air = "AIR"
+        case robot = "ROBOT"
+        case deep = "DEEP"
+        case radio = "RADIO"
+    }
+
     @Published var isRecording = false
     @Published var hasRecording = false
     @Published var isPlaying = false
     @Published var status = "READY"
     @Published var pitch: Float = 700
     @Published var rate: Float = 0.82
+    @Published var style: VoiceStyle = .air
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let pitchUnit = AVAudioUnitTimePitch()
+    private let distortion = AVAudioUnitDistortion()
     private let reverb = AVAudioUnitReverb()
     private var recorder: AVAudioRecorder?
 
@@ -29,6 +38,43 @@ final class VoiceSynth: NSObject, ObservableObject, AVAudioRecorderDelegate {
         isRecording ? stopRecording() : startRecording()
     }
 
+    func applyStyle(_ newStyle: VoiceStyle) {
+        style = newStyle
+
+        switch newStyle {
+        case .air:
+            pitch = 720
+            rate = 0.82
+            distortion.loadFactoryPreset(.multiEcho1)
+            distortion.wetDryMix = 18
+            reverb.loadFactoryPreset(.largeHall)
+            reverb.wetDryMix = 58
+        case .robot:
+            pitch = 1_000
+            rate = 0.72
+            distortion.loadFactoryPreset(.speechAlienChatter)
+            distortion.wetDryMix = 46
+            reverb.loadFactoryPreset(.mediumHall)
+            reverb.wetDryMix = 36
+        case .deep:
+            pitch = -520
+            rate = 0.68
+            distortion.loadFactoryPreset(.multiBrokenSpeaker)
+            distortion.wetDryMix = 22
+            reverb.loadFactoryPreset(.cathedral)
+            reverb.wetDryMix = 44
+        case .radio:
+            pitch = 120
+            rate = 0.96
+            distortion.loadFactoryPreset(.speechRadioTower)
+            distortion.wetDryMix = 54
+            reverb.loadFactoryPreset(.smallRoom)
+            reverb.wetDryMix = 18
+        }
+
+        status = hasRecording ? "\(newStyle.rawValue) READY" : newStyle.rawValue
+    }
+
     func playVoiceSynth() {
         guard hasRecording else {
             status = "REC FIRST"
@@ -43,6 +89,7 @@ final class VoiceSynth: NSObject, ObservableObject, AVAudioRecorderDelegate {
             }
 
             let file = try AVAudioFile(forReading: recordingURL)
+            applyStyle(style)
             pitchUnit.pitch = pitch
             pitchUnit.rate = rate
             player.scheduleFile(file, at: nil) { [weak self] in
@@ -116,14 +163,18 @@ final class VoiceSynth: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
         pitchUnit.pitch = pitch
         pitchUnit.rate = rate
+        distortion.loadFactoryPreset(.multiEcho1)
+        distortion.wetDryMix = 18
         reverb.loadFactoryPreset(.largeHall)
-        reverb.wetDryMix = 42
+        reverb.wetDryMix = 58
 
         engine.attach(player)
         engine.attach(pitchUnit)
+        engine.attach(distortion)
         engine.attach(reverb)
         engine.connect(player, to: pitchUnit, format: nil)
-        engine.connect(pitchUnit, to: reverb, format: nil)
+        engine.connect(pitchUnit, to: distortion, format: nil)
+        engine.connect(distortion, to: reverb, format: nil)
         engine.connect(reverb, to: engine.mainMixerNode, format: nil)
     }
 

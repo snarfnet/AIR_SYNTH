@@ -19,6 +19,12 @@ final class SynthEngine: ObservableObject {
         case crystalBell = "CRYSTAL"
         case velvetChoir = "VELVET"
         case dawnKeys = "DAWN"
+        case analogChorus = "1980 PAD"
+        case fmGlass = "FM GLASS"
+        case warmPoly = "WARM POLY"
+        case wideBrass = "WIDE BRASS"
+        case stringMachine = "STRING"
+        case tapeKeys = "TAPE KEYS"
     }
 
     @Published var isPlaying = false
@@ -105,6 +111,48 @@ final class SynthEngine: ObservableObject {
             delayMix = 0.48
             lfoRate = 0.16
             volume = 0.5
+        case .analogChorus:
+            waveform = .saw
+            filter = 0.68
+            drive = 0.13
+            delayMix = 0.64
+            lfoRate = 0.2
+            volume = 0.5
+        case .fmGlass:
+            waveform = .sine
+            filter = 0.96
+            drive = 0.05
+            delayMix = 0.7
+            lfoRate = 0.14
+            volume = 0.4
+        case .warmPoly:
+            waveform = .saw
+            filter = 0.58
+            drive = 0.2
+            delayMix = 0.52
+            lfoRate = 0.12
+            volume = 0.54
+        case .wideBrass:
+            waveform = .saw
+            filter = 0.48
+            drive = 0.28
+            delayMix = 0.38
+            lfoRate = 0.09
+            volume = 0.56
+        case .stringMachine:
+            waveform = .saw
+            filter = 0.74
+            drive = 0.08
+            delayMix = 0.76
+            lfoRate = 0.22
+            volume = 0.46
+        case .tapeKeys:
+            waveform = .sine
+            filter = 0.7
+            drive = 0.22
+            delayMix = 0.58
+            lfoRate = 0.18
+            volume = 0.48
         }
     }
 
@@ -201,6 +249,23 @@ final class SynthEngine: ObservableObject {
     }
 
     private func renderPatchSample(lfo: Double, slow: Double) -> Double {
+        switch patch {
+        case .analogChorus:
+            return vintageChorusPad(lfo: lfo, slow: slow)
+        case .fmGlass:
+            return fmGlassTone(lfo: lfo)
+        case .warmPoly:
+            return warmPolyPad(slow: slow)
+        case .wideBrass:
+            return wideBrassTone(lfo: lfo)
+        case .stringMachine:
+            return stringMachineTone(lfo: lfo, slow: slow)
+        case .tapeKeys:
+            return tapeKeysTone(lfo: lfo, slow: slow)
+        default:
+            break
+        }
+
         switch waveform {
         case .saw:
             let saw1 = (phase * 2.0) - 1.0
@@ -225,6 +290,56 @@ final class SynthEngine: ObservableObject {
         }
     }
 
+    private func vintageChorusPad(lfo: Double, slow: Double) -> Double {
+        let detune = 0.006 + lfoRate * 0.012
+        let sawA = softSaw(phase)
+        let sawB = softSaw(wrap(phase2 + lfo * detune))
+        let sawC = softSaw(wrap(phase3 - slow * detune * 0.7))
+        let body = sawA * 0.34 + sawB * 0.28 + sawC * 0.2
+        let chorus = sin((phase2 + slow * 0.012) * .pi * 2.0) * 0.12
+        return body + chorus
+    }
+
+    private func fmGlassTone(lfo: Double) -> Double {
+        let mod = sin(phase3 * .pi * 2.0) * (2.4 + filter * 4.2)
+        let carrier = sin((phase * .pi * 2.0) + mod)
+        let bell = sin((phase2 * .pi * 4.0) + mod * 0.42) * 0.2
+        let shine = sin(phase4 * .pi * 14.0) * 0.08 * (0.4 + filter * 0.6)
+        return carrier * 0.48 + bell + shine + lfo * 0.018
+    }
+
+    private func warmPolyPad(slow: Double) -> Double {
+        let sawA = softSaw(phase) * 0.34
+        let sawB = softSaw(wrap(phase2 + slow * 0.004)) * 0.28
+        let square = (phase4 < 0.52 ? 1.0 : -1.0) * 0.14
+        let soft = sin(phase3 * .pi * 2.0) * 0.22
+        return tanh((sawA + sawB + square + soft) * 1.25)
+    }
+
+    private func wideBrassTone(lfo: Double) -> Double {
+        let opening = 0.54 + filter * 0.46
+        let saw = softSaw(phase) * 0.38 + softSaw(phase2) * 0.3
+        let pulse = (phase3 < (0.44 + lfo * 0.04) ? 1.0 : -1.0) * 0.18
+        let bite = sin(phase * .pi * 6.0) * 0.08 * opening
+        return tanh((saw + pulse + bite) * (1.1 + drive * 1.8))
+    }
+
+    private func stringMachineTone(lfo: Double, slow: Double) -> Double {
+        let layerA = softSaw(wrap(phase + lfo * 0.006)) * 0.24
+        let layerB = softSaw(wrap(phase2 - lfo * 0.009)) * 0.24
+        let layerC = softSaw(wrap(phase3 + slow * 0.014)) * 0.18
+        let air = sin(phase4 * .pi * 2.0) * 0.18
+        return layerA + layerB + layerC + air
+    }
+
+    private func tapeKeysTone(lfo: Double, slow: Double) -> Double {
+        let wow = slow * 0.012 + lfo * 0.004
+        let root = sin(wrap(phase + wow) * .pi * 2.0) * 0.5
+        let octave = sin(wrap(phase2 - wow * 0.6) * .pi * 4.0) * 0.18
+        let worn = softSaw(wrap(phase4 + slow * 0.008)) * 0.16
+        return tanh((root + octave + worn) * 1.25)
+    }
+
     private func beautifulColor(_ input: Double) -> Double {
         switch patch {
         case .crystalBell:
@@ -242,5 +357,18 @@ final class SynthEngine: ObservableObject {
         default:
             return input
         }
+    }
+
+    private func softSaw(_ value: Double) -> Double {
+        tanh((((value * 2.0) - 1.0) * 1.6))
+    }
+
+    private func wrap(_ value: Double) -> Double {
+        var wrapped = value
+        wrapped.formTruncatingRemainder(dividingBy: 1)
+        if wrapped < 0 {
+            wrapped += 1
+        }
+        return wrapped
     }
 }

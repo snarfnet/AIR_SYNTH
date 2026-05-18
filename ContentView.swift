@@ -1,0 +1,312 @@
+import SwiftUI
+
+struct ContentView: View {
+    @StateObject private var synth = SynthEngine()
+    @StateObject private var midi = MidiOut()
+    @StateObject private var sequencer = StepSequencer()
+
+    @State private var touchPoint = CGPoint(x: 0.42, y: 0.36)
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Image("AirSynthVisual")
+                .resizable()
+                .scaledToFill()
+                .ignoresSafeArea()
+                .overlay(Color.black.opacity(0.38))
+                .overlay(
+                    LinearGradient(
+                        colors: [.black.opacity(0.5), .clear, .black.opacity(0.82)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .ignoresSafeArea()
+                )
+
+            VStack(spacing: 14) {
+                header
+                waveformScope
+                performanceField
+                controlRack
+                sequencerPanel
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 22)
+            .padding(.bottom, 16)
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("AIR SYNTH")
+                    .font(.system(size: 31, weight: .black, design: .rounded))
+                    .tracking(3)
+                    .foregroundStyle(
+                        LinearGradient(colors: [.white, .cyan, Color(red: 1.0, green: 0.56, blue: 0.2)], startPoint: .leading, endPoint: .trailing)
+                    )
+                Text("NO-TOUCH WAVE INSTRUMENT")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.62))
+                    .tracking(1.2)
+            }
+
+            Spacer()
+
+            Button {
+                synth.isPlaying ? synth.stop() : synth.start()
+                if synth.isPlaying {
+                    midi.noteOn(synth.noteNumber())
+                }
+            } label: {
+                Image(systemName: synth.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 18, weight: .black))
+                    .frame(width: 48, height: 48)
+                    .background(Circle().fill(synth.isPlaying ? Color.cyan : Color.orange))
+                    .foregroundColor(.black)
+                    .shadow(color: (synth.isPlaying ? Color.cyan : Color.orange).opacity(0.75), radius: 18)
+            }
+        }
+    }
+
+    private var waveformScope: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("LIVE WAVEFORM")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.cyan)
+                    Spacer()
+                    Text("\(Int(synth.frequency())) Hz")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.orange)
+                }
+
+                TimelineView(.animation) { context in
+                    Canvas { graphics, size in
+                        let t = context.date.timeIntervalSinceReferenceDate
+                        var path = Path()
+                        let mid = size.height * 0.5
+                        let amp = size.height * (0.16 + synth.volume * 0.24)
+
+                        for x in stride(from: 0.0, through: size.width, by: 3.0) {
+                            let p = x / size.width
+                            let y = mid + sin((p * 6.0 + t * 1.7 + synth.pitch * 2.0) * .pi * 2.0) * amp
+                                + sin((p * 17.0 + t * 0.72) * .pi * 2.0) * amp * 0.28
+                            if x == 0 {
+                                path.move(to: CGPoint(x: x, y: y))
+                            } else {
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                        }
+
+                        graphics.stroke(path, with: .color(.cyan.opacity(0.96)), lineWidth: 3)
+                        graphics.stroke(path, with: .color(.orange.opacity(0.42)), lineWidth: 8)
+                    }
+                }
+                .frame(height: 98)
+            }
+        }
+    }
+
+    private var performanceField: some View {
+        GeometryReader { proxy in
+            ZStack {
+                RoundedRectangle(cornerRadius: 28)
+                    .fill(.black.opacity(0.45))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 28)
+                            .stroke(.cyan.opacity(0.42), lineWidth: 1.5)
+                    )
+
+                GridLines()
+                    .stroke(.cyan.opacity(0.16), lineWidth: 1)
+                    .clipShape(RoundedRectangle(cornerRadius: 28))
+
+                Circle()
+                    .stroke(.orange.opacity(0.52), lineWidth: 2)
+                    .frame(width: 168 + synth.filter * 90, height: 168 + synth.filter * 90)
+                    .position(x: touchPoint.x * proxy.size.width, y: touchPoint.y * proxy.size.height)
+                    .shadow(color: .orange.opacity(0.75), radius: 18)
+
+                Circle()
+                    .fill(.cyan)
+                    .frame(width: 18, height: 18)
+                    .position(x: touchPoint.x * proxy.size.width, y: touchPoint.y * proxy.size.height)
+                    .shadow(color: .cyan, radius: 18)
+
+                VStack {
+                    HStack {
+                        Text("HAND FIELD")
+                        Spacer()
+                        Text("MIDI \(midi.destinationCount)")
+                    }
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.65))
+                    .padding(16)
+                    Spacer()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let x = min(max(value.location.x / max(proxy.size.width, 1), 0), 1)
+                        let y = min(max(value.location.y / max(proxy.size.height, 1), 0), 1)
+                        touchPoint = CGPoint(x: x, y: y)
+                        synth.pitch = x
+                        synth.filter = 1.0 - y
+                        synth.volume = 0.35 + (1.0 - y) * 0.58
+                        if synth.isPlaying {
+                            midi.noteOn(synth.noteNumber())
+                            midi.controlChange(74, value: UInt8(synth.filter * 127))
+                            midi.controlChange(7, value: UInt8(synth.volume * 127))
+                        }
+                    }
+            )
+        }
+        .frame(height: 255)
+    }
+
+    private var controlRack: some View {
+        GlassPanel {
+            VStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    ForEach(SynthEngine.Waveform.allCases, id: \.self) { wave in
+                        Button {
+                            synth.waveform = wave
+                        } label: {
+                            Text(wave.rawValue)
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(synth.waveform == wave ? Color.cyan : Color.white.opacity(0.08)))
+                                .foregroundColor(synth.waveform == wave ? .black : .white.opacity(0.82))
+                        }
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    MacroSlider(title: "DRIVE", value: $synth.drive, color: .orange)
+                    MacroSlider(title: "DELAY", value: $synth.delayMix, color: .cyan)
+                    MacroSlider(title: "LFO", value: $synth.lfoRate, color: .mint)
+                }
+            }
+        }
+    }
+
+    private var sequencerPanel: some View {
+        GlassPanel {
+            VStack(spacing: 13) {
+                HStack {
+                    Text("SEQUENCE")
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                    Spacer()
+                    Stepper("\(Int(sequencer.bpm)) BPM", value: $sequencer.bpm, in: 72...168, step: 1)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .labelsHidden()
+                    Button(sequencer.isRunning ? "STOP" : "RUN") {
+                        if sequencer.isRunning {
+                            sequencer.stop()
+                            midi.noteOff(synth.noteNumber())
+                        } else {
+                            synth.start()
+                            sequencer.start { _, note in
+                                let normalized = min(max((Double(note) - 36.0) / 24.0, 0), 1)
+                                synth.pitch = normalized
+                                midi.noteOn(UInt8(note))
+                            }
+                        }
+                    }
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(sequencer.isRunning ? Color.orange : Color.cyan))
+                    .foregroundColor(.black)
+                }
+                .foregroundColor(.white)
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 7), count: 8), spacing: 8) {
+                    ForEach(0..<sequencer.steps.count, id: \.self) { index in
+                        Button {
+                            sequencer.toggleStep(index)
+                        } label: {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(stepColor(index))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(index == sequencer.currentStep ? .white : .clear, lineWidth: 2)
+                                )
+                                .frame(height: 34)
+                        }
+                    }
+                }
+
+                HStack {
+                    Toggle("MIDI OUT", isOn: $midi.isEnabled)
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                    Spacer()
+                    Text(midi.lastMessage)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(.cyan)
+                }
+                .foregroundColor(.white)
+            }
+        }
+    }
+
+    private func stepColor(_ index: Int) -> Color {
+        if index == sequencer.currentStep {
+            return .white
+        }
+        return sequencer.steps[index] ? .orange : .white.opacity(0.09)
+    }
+}
+
+private struct GlassPanel<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(.black.opacity(0.54))
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.12), lineWidth: 1))
+            )
+    }
+}
+
+private struct MacroSlider: View {
+    let title: String
+    @Binding var value: Double
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .foregroundColor(.white.opacity(0.78))
+            Slider(value: $value, in: 0...1)
+                .tint(color)
+        }
+    }
+}
+
+private struct GridLines: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for index in 1..<6 {
+            let x = rect.minX + rect.width * CGFloat(index) / 6.0
+            path.move(to: CGPoint(x: x, y: rect.minY))
+            path.addLine(to: CGPoint(x: x, y: rect.maxY))
+        }
+        for index in 1..<5 {
+            let y = rect.minY + rect.height * CGFloat(index) / 5.0
+            path.move(to: CGPoint(x: rect.minX, y: y))
+            path.addLine(to: CGPoint(x: rect.maxX, y: y))
+        }
+        return path
+    }
+}

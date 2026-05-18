@@ -24,17 +24,19 @@ struct ContentView: View {
                     .ignoresSafeArea()
                 )
 
-            VStack(spacing: 14) {
-                header
-                waveformScope
-                performanceField
-                patchPanel
-                controlRack
-                sequencerPanel
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 12) {
+                    header
+                    waveformScope
+                    performanceField
+                    patchPanel
+                    controlRack
+                    sequencerPanel
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 22)
+                .padding(.bottom, 34)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 22)
-            .padding(.bottom, 16)
         }
         .preferredColorScheme(.dark)
     }
@@ -86,7 +88,7 @@ struct ContentView: View {
                 }
 
                 WaveformView(pitch: synth.pitch, volume: synth.volume)
-                .frame(height: 98)
+                .frame(height: 78)
             }
         }
     }
@@ -146,7 +148,7 @@ struct ContentView: View {
                     }
             )
         }
-        .frame(height: 255)
+        .frame(height: 218)
     }
 
     private var controlRack: some View {

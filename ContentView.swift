@@ -4,9 +4,24 @@ struct ContentView: View {
     @StateObject private var synth = SynthEngine()
     @StateObject private var midi = MidiOut()
     @StateObject private var sequencer = StepSequencer()
+    @StateObject private var voiceSynth = VoiceSynth()
 
     @State private var touchPoint = CGPoint(x: 0.42, y: 0.36)
     @State private var pulse = false
+
+    private var voicePitchBinding: Binding<Double> {
+        Binding(
+            get: { Double(voiceSynth.pitch + 1_200) / 2_400 },
+            set: { voiceSynth.pitch = Float(($0 * 2_400) - 1_200) }
+        )
+    }
+
+    private var voiceRateBinding: Binding<Double> {
+        Binding(
+            get: { Double((voiceSynth.rate - 0.45) / 1.1) },
+            set: { voiceSynth.rate = Float(0.45 + $0 * 1.1) }
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -31,6 +46,7 @@ struct ContentView: View {
                     performanceField
                     patchPanel
                     controlRack
+                    rhythmVoicePanel
                     sequencerPanel
                 }
                 .padding(.horizontal, 18)
@@ -214,6 +230,60 @@ struct ContentView: View {
         }
     }
 
+    private var rhythmVoicePanel: some View {
+        GlassPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("DRUM / VOICE")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.72))
+                    Spacer()
+                    Text(voiceSynth.status)
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundColor(voiceSynth.isRecording ? .orange : .cyan)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        synth.triggerKick(.kick808)
+                    } label: {
+                        Label("808", systemImage: "circle.fill")
+                    }
+                    .buttonStyle(InstrumentButtonStyle(color: .orange))
+
+                    Button {
+                        synth.triggerKick(.kick909)
+                    } label: {
+                        Label("909", systemImage: "circle.circle.fill")
+                    }
+                    .buttonStyle(InstrumentButtonStyle(color: .cyan))
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        voiceSynth.toggleRecording()
+                    } label: {
+                        Label(voiceSynth.isRecording ? "STOP REC" : "REC VOICE", systemImage: voiceSynth.isRecording ? "stop.fill" : "mic.fill")
+                    }
+                    .buttonStyle(InstrumentButtonStyle(color: voiceSynth.isRecording ? .orange : .red))
+
+                    Button {
+                        voiceSynth.isPlaying ? voiceSynth.stopVoiceSynth() : voiceSynth.playVoiceSynth()
+                    } label: {
+                        Label(voiceSynth.isPlaying ? "STOP" : "VOICE SYNTH", systemImage: voiceSynth.isPlaying ? "stop.fill" : "waveform")
+                    }
+                    .buttonStyle(InstrumentButtonStyle(color: .mint))
+                    .opacity(voiceSynth.hasRecording ? 1 : 0.58)
+                }
+
+                HStack(spacing: 12) {
+                    MacroSlider(title: "VOICE PITCH", value: voicePitchBinding, color: .mint)
+                    MacroSlider(title: "VOICE RATE", value: voiceRateBinding, color: .cyan)
+                }
+            }
+        }
+    }
+
     private var sequencerPanel: some View {
         GlassPanel {
             VStack(spacing: 13) {
@@ -279,6 +349,23 @@ struct ContentView: View {
             return .white
         }
         return sequencer.steps[index] ? .orange : .white.opacity(0.09)
+    }
+}
+
+private struct InstrumentButtonStyle: ButtonStyle {
+    let color: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 11, weight: .black, design: .monospaced))
+            .labelStyle(.titleAndIcon)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(color.opacity(configuration.isPressed ? 0.9 : 0.72))
+            )
+            .foregroundColor(.black)
     }
 }
 

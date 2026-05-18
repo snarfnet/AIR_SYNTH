@@ -3,6 +3,11 @@ import Combine
 import Foundation
 
 final class SynthEngine: ObservableObject {
+    enum KickType {
+        case kick808
+        case kick909
+    }
+
     enum Waveform: String, CaseIterable {
         case saw = "SAW"
         case square = "SQR"
@@ -50,6 +55,9 @@ final class SynthEngine: ObservableObject {
     private var hazeSample: Double = 0
     private var delayBuffer = [Float](repeating: 0, count: 132_300)
     private var delayIndex = 0
+    private var kickType: KickType = .kick808
+    private var kickTime: Double = 1
+    private var kickPhase: Double = 0
     private let scale = [0, 2, 3, 5, 7, 10, 12, 14, 15, 17, 19, 22, 24]
 
     func applyPatch(_ newPatch: AmbientPatch) {
@@ -176,6 +184,17 @@ final class SynthEngine: ObservableObject {
         engine.pause()
     }
 
+    func triggerKick(_ type: KickType) {
+        configureAudioIfNeeded()
+        kickType = type
+        kickTime = 0
+        kickPhase = 0
+
+        if !isPlaying {
+            start()
+        }
+    }
+
     func noteNumber() -> UInt8 {
         let step = min(max(Int(pitch * Double(scale.count - 1)), 0), scale.count - 1)
         return UInt8(36 + scale[step])
@@ -241,11 +260,42 @@ final class SynthEngine: ObservableObject {
         let delayFrames = min(delayBuffer.count - 1, max(1, Int(sampleRate * delaySeconds)))
         let readIndex = (delayIndex - delayFrames + delayBuffer.count) % delayBuffer.count
         let delayed = delayBuffer[readIndex]
-        let output = Float(driven) * Float(volume) + delayed * Float(delayMix)
+        let kick = renderKick(sampleRate: sampleRate)
+        let output = Float(driven) * Float(volume) + delayed * Float(delayMix) + kick
         delayBuffer[delayIndex] = output * Float(0.48 + delayMix * 0.34)
         delayIndex = (delayIndex + 1) % delayBuffer.count
 
         return max(-1, min(1, output))
+    }
+
+    private func renderKick(sampleRate: Double) -> Float {
+        guard kickTime < 1.2 else { return 0 }
+
+        let sample: Double
+        switch kickType {
+        case .kick808:
+            let bodyDecay = exp(-kickTime * 7.2)
+            let pitchDrop = exp(-kickTime * 18.0)
+            let frequency = 46.0 + pitchDrop * 92.0
+            kickPhase += frequency / sampleRate
+            kickPhase.formTruncatingRemainder(dividingBy: 1)
+            let body = sin(kickPhase * .pi * 2.0) * bodyDecay
+            let click = Double.random(in: -1...1) * exp(-kickTime * 90.0) * 0.08
+            sample = tanh((body + click) * 1.8) * 0.72
+        case .kick909:
+            let bodyDecay = exp(-kickTime * 12.0)
+            let pitchDrop = exp(-kickTime * 26.0)
+            let frequency = 54.0 + pitchDrop * 118.0
+            kickPhase += frequency / sampleRate
+            kickPhase.formTruncatingRemainder(dividingBy: 1)
+            let body = sin(kickPhase * .pi * 2.0) * bodyDecay
+            let snap = Double.random(in: -1...1) * exp(-kickTime * 62.0) * 0.24
+            let knock = sin(kickPhase * .pi * 8.0) * exp(-kickTime * 36.0) * 0.16
+            sample = tanh((body + snap + knock) * 2.2) * 0.66
+        }
+
+        kickTime += 1.0 / sampleRate
+        return Float(sample)
     }
 
     private func renderPatchSample(lfo: Double, slow: Double) -> Double {

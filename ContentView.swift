@@ -84,28 +84,7 @@ struct ContentView: View {
                         .foregroundColor(.orange)
                 }
 
-                TimelineView(.animation) { context in
-                    Canvas { graphics, size in
-                        let t = context.date.timeIntervalSinceReferenceDate
-                        var path = Path()
-                        let mid = size.height * 0.5
-                        let amp = size.height * (0.16 + synth.volume * 0.24)
-
-                        for x in stride(from: 0.0, through: size.width, by: 3.0) {
-                            let p = x / size.width
-                            let y = mid + sin((p * 6.0 + t * 1.7 + synth.pitch * 2.0) * .pi * 2.0) * amp
-                                + sin((p * 17.0 + t * 0.72) * .pi * 2.0) * amp * 0.28
-                            if x == 0 {
-                                path.move(to: CGPoint(x: x, y: y))
-                            } else {
-                                path.addLine(to: CGPoint(x: x, y: y))
-                            }
-                        }
-
-                        graphics.stroke(path, with: .color(.cyan.opacity(0.96)), lineWidth: 3)
-                        graphics.stroke(path, with: .color(.orange.opacity(0.42)), lineWidth: 8)
-                    }
-                }
+                WaveformView(pitch: synth.pitch, volume: synth.volume)
                 .frame(height: 98)
             }
         }
@@ -307,6 +286,42 @@ private struct GridLines: Shape {
             path.move(to: CGPoint(x: rect.minX, y: y))
             path.addLine(to: CGPoint(x: rect.maxX, y: y))
         }
+        return path
+    }
+}
+
+private struct WaveformView: View {
+    let pitch: Double
+    let volume: Double
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            Canvas { graphics, size in
+                let path = makePath(size: size, time: context.date.timeIntervalSinceReferenceDate)
+                graphics.stroke(path, with: .color(.orange.opacity(0.42)), lineWidth: 8)
+                graphics.stroke(path, with: .color(.cyan.opacity(0.96)), lineWidth: 3)
+            }
+        }
+    }
+
+    private func makePath(size: CGSize, time: TimeInterval) -> Path {
+        var path = Path()
+        let mid = size.height * 0.5
+        let amp = size.height * (0.16 + volume * 0.24)
+
+        for x in stride(from: 0.0, through: size.width, by: 3.0) {
+            let p = x / max(size.width, 1)
+            let primary = sin((p * 6.0 + time * 1.7 + pitch * 2.0) * .pi * 2.0) * amp
+            let secondary = sin((p * 17.0 + time * 0.72) * .pi * 2.0) * amp * 0.28
+            let y = mid + primary + secondary
+
+            if x == 0 {
+                path.move(to: CGPoint(x: x, y: y))
+            } else {
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+        }
+
         return path
     }
 }
